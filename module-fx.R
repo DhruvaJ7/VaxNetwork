@@ -355,6 +355,7 @@ afunc <- function(dat, at) {
   dat <- set_attr(dat, "protection", protection)
   dat <- set_attr(dat, "infTime", infTime)
   dat <- set_attr(dat, "status", status)
+  dat <- append_attr(dat, "age.grp", sample(1:3, 1, replace = TRUE), nArrivals)
   
   ## SUMMARY STATISTICS ##
   
