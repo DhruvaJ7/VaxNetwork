@@ -108,7 +108,7 @@ infect <- function(dat, at) {
 
       # Set new attributes for those newly infected
       if (nInf > 0) {
-        status[idsNewInf] <- "e"
+        status[idsNewInf] <- "i"
         dat <- set_attr(dat, "status", status)
         infTime[idsNewInf] <- at
         dat <- set_attr(dat, "infTime", infTime)
@@ -117,10 +117,10 @@ infect <- function(dat, at) {
   }
 
   ## Save summary statistics
-  dat <- set_epi(dat, "se.flow", at, nInf)
+
 
   dat <- set_epi(dat, "s.num", at, sum(active == 1 & status == "s"))
-  dat <- set_epi(dat, "e.num", at, sum(active == 1 & status == "e"))
+
   dat <- set_epi(dat, "i.num", at, sum(active == 1 & status == "i"))
   dat <- set_epi(dat, "r.num", at, sum(active == 1 & status == "r"))
   dat <- set_epi(dat, "v.num", at, sum(active == 1 & status == "v"))
@@ -143,22 +143,10 @@ progress <- function(dat, at) {
   status <- get_attr(dat, "status")
 
   ## Parameters ##
-  ei.rate <- get_param(dat, "ei.rate")
+
   ir.rate <- get_param(dat, "ir.rate")
 
-  ## E to I progression process ##
-  nInf <- 0
-  idsEligInf <- which(active == 1 & status == "e")
-  nEligInf <- length(idsEligInf)
 
-  if (nEligInf > 0) {
-    vecInf <- which(rbinom(nEligInf, 1, ei.rate) == 1)
-    if (length(vecInf) > 0) {
-      idsInf <- idsEligInf[vecInf]
-      nInf <- length(idsInf)
-      status[idsInf] <- "i"
-    }
-  }
 
   ## I to R progression process ##
   nRec <- 0
@@ -178,65 +166,71 @@ progress <- function(dat, at) {
   dat <- set_attr(dat, "status", status)
 
   ## Save summary statistics ##
-  dat <- set_epi(dat, "ei.flow", at, nInf)
+
   dat <- set_epi(dat, "ir.flow", at, nRec)
 
   return(dat)
 }
 
-# Update Death Module -----------------------------------------------------
+# Update Departure Module -----------------------------------------------------
 
 dfunc <- function(dat, at) {
-
-  #browser()
-
-  ## Attributes ##
+  
+  ## Attributes
   active <- get_attr(dat, "active")
-  status <- get_attr(dat, "status")
   exitTime <- get_attr(dat, "exitTime")
-
-  ## Parameters ##
-  mortality.rate <- get_param(dat, "mortality.rate")
-  mort.rates <- rep(mortality.rate, length(active))
-  mort.dis.mult <- get_param(dat, "mortality.disease.mult")
-
-  ## Query alive ##
+  age <- get_attr(dat, "age")
+  status <- get_attr(dat, "status")
+  
+  ## Parameters
+  dep.rates <- get_param(dat, "departure.rates")
+  dep.dis.mult <- get_param(dat, "departure.disease.mult")
+  
+  ## Query alive
   idsElig <- which(active == 1)
   nElig <- length(idsElig)
-  nDeaths <- 0
-
+  
+  ## Initialize trackers
+  nDepts <- 0
+  idsDepts <- NULL
+  
   if (nElig > 0) {
-
-    death_rates_of_elig <- mort.rates[idsElig]
-
-    ## Multiply death rates for diseased persons
+    
+    ## Calculate age-specific departure rates for each eligible node ##
+    ## Everyone older than 3 gets the final mortality rate
+    whole_ages_of_elig <- pmin(ceiling(age[idsElig]), 4)
+    drates_of_elig <- dep.rates[whole_ages_of_elig]
+    
+    ## Multiply departure rates for diseased persons
     idsElig.inf <- which(status[idsElig] == "i")
-    death_rates_of_elig[idsElig.inf] <- mort.rates[idsElig.inf] * mort.dis.mult
-
-    ## Simulate mortality process
-    vecDeaths <- which(rbinom(nElig, 1, death_rates_of_elig) == 1)
-    idsDeaths <- idsElig[vecDeaths]
-    nDeaths <- length(idsDeaths)
-
+    drates_of_elig[idsElig.inf] <- drates_of_elig[idsElig.inf] * 
+      dep.dis.mult
+    
+    ## Simulate departure process
+    vecDepts <- which(rbinom(nElig, 1, drates_of_elig) == 1)
+    idsDepts <- idsElig[vecDepts]
+    nDepts <- length(idsDepts)
+    
     ## Update nodal attributes
-    if (nDeaths > 0) {
-      active[idsDeaths] <- 0
-      exitTime[idsDeaths] <- at
+    if (nDepts > 0) {
+      active[idsDepts] <- 0
+      exitTime[idsDepts] <- at
     }
-
   }
-
-  ## Write out updated attributes
+  
+  ## Set updated attributes
   dat <- set_attr(dat, "active", active)
   dat <- set_attr(dat, "exitTime", exitTime)
-
-  ## Summary statistics
-  dat <- set_epi(dat, "d.flow", at, nDeaths)
-  dat <- set_epi(dat, "d.num", at, sum(active == 0))
-
+  
+  ## Summary statistics ##
+  dat <- set_epi(dat, "total.deaths", at, nDepts)
+  
+  # covid deaths
+  covid.deaths <- length(intersect(idsDepts, which(status == "i")))
+  dat <- set_epi(dat, "covid.deaths", at, covid.deaths)
+  
   return(dat)
 }
-
 
 # Updated Birth Module ----------------------------------------------------
 
